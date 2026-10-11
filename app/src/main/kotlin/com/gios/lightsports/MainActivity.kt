@@ -60,6 +60,7 @@ import com.gios.lightsports.ui.StandingsScreen
 import com.gios.lightsports.ui.TeamScreen
 import com.gios.lightsports.ui.TeamStatsScreen
 import com.gios.lightsports.ui.theme.LightSportsTheme
+import com.gios.lightsports.util.shouldOpenFromIntent
 
 class MainActivity : ComponentActivity() {
 
@@ -173,6 +174,12 @@ private fun App(openGameId: String?) {
     var tab by remember { mutableIntStateOf(TAB_SCORES) }
     var openGame by remember { mutableStateOf<Game?>(null) }
     /**
+     * Whether the notification that launched the app has already taken the reader to its
+     * game. The intent's game id never changes for the session, so without this the
+     * effect below would treat every return to the feed as a fresh tap on the notification.
+     */
+    var intentGameConsumed by remember { mutableStateOf(false) }
+    /**
      * The open race weekend or golf tournament, held by id rather than by value: the feed
      * refetches under it and a leaderboard the reader is looking at has to move with it.
      */
@@ -219,10 +226,17 @@ private fun App(openGameId: String?) {
     }
 
     // Tapping a score notification lands on that game, but only once the feed it came
-    // from has actually loaded.
+    // from has actually loaded, and only once. The game count changes every time a game
+    // starts or ends, and the feed refetches every fifteen seconds while anything is live,
+    // so this effect re-fires long after the tap. The intent is spent the first time its
+    // game actually opens; until then a lookup that comes back empty is just a feed that
+    // has not arrived yet, and the next change in the count tries again. Spent, it stays
+    // spent, so a reader who backs out to the feed is not walked back into the game.
     LaunchedEffect(openGameId, feed.games.size) {
-        if (openGameId != null && openGame == null) {
-            openGame = vm.gameById(openGameId)
+        if (shouldOpenFromIntent(openGameId, intentGameConsumed, openGame != null)) {
+            val game = openGameId?.let { vm.gameById(it) } ?: return@LaunchedEffect
+            openGame = game
+            intentGameConsumed = true
         }
     }
 
